@@ -1,0 +1,46 @@
+services:
+    nginx:
+        image: adamroberts91/nginx:1.1.0
+        volumes:
+            - .:/var/www/app:delegated
+        ports:
+            - '80'
+        depends_on:
+            - php
+            - php_xdebug
+            - db
+
+    php: &php
+        image: adamroberts91/php83-fpm:1.0.0
+        working_dir: /var/www/app
+        volumes:
+            - $HOME/.composer/:/.composer/:delegated
+            - .:/var/www/app:delegated
+        user: 1000:1000
+        environment:
+            - COMPOSER_CACHE_DIR=/.composer/cache
+        depends_on:
+            - db
+            - mailpit
+
+    mailpit:
+        image: axllent/mailpit:latest
+        ports:
+            - '8025'
+            - '1025'
+
+    php_xdebug:
+        <<: *php
+        command: [ "php-fpm83", "-dzend_extension=xdebug.so" ]
+
+    db:
+        image: mysql:9.2.0
+        user: 1000:1000
+        ports:
+            - '3306'
+        command: --max_allowed_packet=500M
+        environment:
+            MYSQL_ROOT_PASSWORD: root
+            MYSQL_DATABASE: event_scheduler
+        volumes:
+            - ./var/mysql:/var/lib/mysql

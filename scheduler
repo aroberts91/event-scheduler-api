@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+
+set -e
+
+SCHEDULER_CMDS="start|stop|restart|build|rebuild|destroy|server|logs [args]"
+
+confirm() {
+  read -r -p "$@ [Y/n]: " confirm
+
+  case "$confirm" in
+  [Nn][Oo] | [Nn])
+    echo "Aborting"
+    exit
+    ;;
+  esac
+}
+
+print-usage() {
+  echo "Usage: ./scheduler $SCHEDULER_CMDS"
+}
+
+print-server-address() {
+  echo "🌎 Web server: $(get-server-address)"
+}
+
+get-server-address() {
+  echo "http://localhost:$(docker compose port nginx 80 | awk -F ":" '{print $2}')"
+}
+
+destroy() {
+  docker compose down --remove-orphans
+  rm -rf var/mysql/*
+}
+
+start() {
+  # If nginx isn’t running, launch the stack in detached mode
+  if [ -z "$(docker compose ps -q nginx --status=running 2>/dev/null)" ]; then
+    docker compose up -d nginx
+
+    # Wait until nginx reports a “running” status
+    until [ -n "$(docker compose ps -q nginx --status=running 2>/dev/null)" ]; do
+      sleep 1
+    done
+  else
+    echo "Already started"
+  fi
+
+  print-server-address
+}
+
+stop() {
+  docker compose stop
+}
+
+build() {
+  git config pull.ff true
+  git config branch.master.mergeOptions "--no-ff"
+  git config branch.production.mergeOptions "--no-ff"
+  git config branch.preview.mergeOptions "--no-ff"
+
+  [ -f ".env" ] || cp .env.dist .env
+
+  if [ -n "$(docker compose ps -q nginx --status=running 2>/dev/null)" ]; then
+    stop
+  fi
+
+  docker compose build
+}
+
+get-port() {
+  docker compose port $1 $2 | awk -F ":" '{print $2}'
+}
+
+case "$1" in
+help)
+  print-usage
+  echo "
+start                           Starts all containers and prints the web server address and port
+stop                            Stops all containers
+restart                         Shorthand for 'scheduler stop && scheduler start'
+build                           Builds all containers. Must be executed before scheduler start
+rebuild                         Rebuilds all containers
+destroy                         Destroys all containers and the network for this project
+server                          Prints the running web server address and port e.g. http://localhost:1234
+logs [container]                Prints Docker logs for all containers or the specified container
+ssh <container>                 Starts an SSH connection to the specified container e.g. scheduler ssh php
+"
+  ;;
+start)
+  start ${@:2}
+  ;;
+stop)
+  stop
+  ;;
+restart)
+  stop && start
+  ;;
+build)
+  build
+  ;;
+destroy)
+  destroy
+  ;;
+rebuild)
+  destroy && build
+  ;;
+server)
+  start >/dev/null
+  print-server-address
+  ;;
+ssh)
+  docker compose exec --user root $2 sh
+  ;;
+logs)
+  docker compose logs ${2:-}
+  ;;
+reload)
+  docker compose exec --user root $2 sh -c 'kill -USR2 1'
+  ;;
+*)
+  print-usage
+  ;;
+esac
