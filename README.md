@@ -106,3 +106,11 @@ Events on 2025-08-02 (UTC)
 
    10:00 — 11:00 : Project Kick-off
 ```
+
+## 🧪 Running Tests
+
+Run the following command to execute tests:
+
+```sh
+./composer test
+```
